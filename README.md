@@ -686,7 +686,204 @@ rm -rf cache/stock_data/*
 4. **自動生成** - `cache/`, `output/`, `logs/` 會自動創建，不需手動建立
 
 ---
+## ⏰ 自動化與排程
 
+### 環境說明
+
+本專案使用 **conda stockml** 環境，請確保排程腳本正確啟動環境。
+
+### 快速設置排程
+
+#### 方法 1：使用互動式設置腳本（推薦）
+
+```bash
+./setup_cron.sh
+```
+
+腳本會詢問您想要的執行時間：
+- **選項 1**：台股收盤後 14:30（週一至週五）
+- **選項 2**：美股收盤後 06:30（週一至週五）
+- **選項 3**：每日午夜 00:00
+- **選項 4**：自訂時間
+
+#### 方法 2：手動設置 crontab
+
+```bash
+crontab -e
+```
+
+添加以下其中一行：
+
+```bash
+# 台股收盤後執行（週一至週五 14:30）
+30 14 * * 1-5 /home/human/stock-underdog-ml/run_daily.sh >> /home/human/stock-underdog-ml/logs/cron.log 2>&1
+
+# 美股收盤後執行（週一至週五 6:30）
+30 6 * * 1-5 /home/human/stock-underdog-ml/run_daily.sh >> /home/human/stock-underdog-ml/logs/cron.log 2>&1
+
+# 每日午夜執行（使用快取數據）
+0 0 * * * /home/human/stock-underdog-ml/run_daily.sh >> /home/human/stock-underdog-ml/logs/cron.log 2>&1
+```
+
+### 執行腳本說明
+
+#### run_daily.sh（每日自動執行）
+
+**功能：**
+1. ✅ 自動啟動 stockml conda 環境
+2. ✅ 執行回測（驗證昨日預測）
+3. ✅ 執行雙軌策略分析（今日預測）
+4. ✅ 清理 30 天前的舊日誌
+5. ✅ 所有輸出記錄到 logs/daily_YYYYMMDD_HHMMSS.log
+
+**手動測試：**
+```bash
+./run_daily.sh
+```
+
+**查看執行日誌：**
+```bash
+# 即時查看最新日誌
+tail -f logs/daily_*.log
+
+# 查看 cron 執行記錄
+tail -f logs/cron.log
+
+# 列出最近 10 次執行
+ls -lt logs/daily_*.log | head -10
+```
+
+### 環境變數檢查
+
+確保 `.env` 檔案已正確設置：
+
+```bash
+# 必填項目
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your_service_role_key
+
+# 通知（選填）
+TELEGRAM_BOT_TOKEN=your_token
+TELEGRAM_CHANNEL_ID=your_channel_id
+DISCORD_WEBHOOK_URL=your_webhook
+SENDER_EMAIL=your_email@gmail.com
+EMAIL_PASSWORD=your_app_password
+TO_EMAILS=REDACTED_EMAIL,REDACTED_EMAIL
+```
+
+### 排程執行流程
+
+```
+Cron 觸發 (例如：14:30)
+         ↓
+啟動 run_daily.sh
+         ↓
+載入 conda stockml 環境
+         ↓
+┌────────┴────────┬───────────────┐
+│                 │               │
+執行回測      執行雙軌策略    清理舊日誌
+(驗證昨日)    (預測今日)    (保留30天)
+         ↓
+記錄到 logs/daily_YYYYMMDD_HHMMSS.log
+         ↓
+發送通知 (Telegram/Discord/Email)
+         ↓
+完成
+```
+
+### 日誌管理
+
+**日誌類型：**
+- `logs/daily_*.log` - 每日執行主日誌（自動生成時間戳記）
+- `logs/cron.log` - Cron 執行記錄（包含錯誤訊息）
+- `logs/app.log` - 應用程式運行日誌
+
+**自動清理：**
+- 超過 30 天的日誌會自動刪除
+- 保持 logs/ 目錄整潔
+
+### 常見問題
+
+#### Q1: Cron 執行失敗，找不到 conda？
+
+**A:** 確保 `run_daily.sh` 中 conda 路徑正確：
+```bash
+# 檢查您的 conda 安裝路徑
+which conda
+
+# 修改 run_daily.sh 第 7 行
+source /home/human/miniconda3/etc/profile.d/conda.sh
+```
+
+#### Q2: 環境沒有正確啟動？
+
+**A:** 手動測試環境啟動：
+```bash
+source /home/human/miniconda3/etc/profile.d/conda.sh
+conda activate stockml
+python --version  # 確認 Python 版本
+pip list | grep tensorflow  # 確認套件安裝
+```
+
+#### Q3: 如何確認 Cron 設置成功？
+
+**A:** 檢查 crontab 列表：
+```bash
+crontab -l
+```
+
+#### Q4: 如何暫停自動執行？
+
+**A:** 註解掉 crontab 中的行：
+```bash
+crontab -e
+# 在行首加上 # 註解
+# 30 14 * * 1-5 /home/human/stock-underdog-ml/run_daily.sh ...
+```
+
+#### Q5: 執行時間建議？
+
+**A:** 建議時間：
+- **台股為主**：14:30（收盤後 30 分鐘，數據已更新）
+- **美股為主**：06:30（美東時間收盤後，台灣早上）
+- **兩者都做**：設置兩個排程分別執行
+
+### 監控與維護
+
+**檢查系統狀態：**
+```bash
+# 查看 Cron 服務狀態
+systemctl status cron
+
+# 查看最近執行結果
+tail -100 logs/cron.log | grep -E "(✅|❌|完成|失敗)"
+
+# 檢查資料庫連線
+python -c "from database import SupabaseManager; db = SupabaseManager(); print('✅ 連線成功' if db.enabled else '❌ 連線失敗')"
+```
+
+**效能監控：**
+```bash
+# 查看執行時間
+grep "執行時間\|結束時間" logs/daily_*.log | tail -20
+
+# 查看預測數量
+grep "符合條件\|預測完成\|雙重符合" logs/daily_*.log | tail -10
+```
+
+---
+
+## 📊 結果解讀指南
+
+完整的輸出解讀邏輯請參考 **[explain.md](explain.md)**，包含：
+- 回調類型判讀（MA60 vs MA120）
+- PE/PB 估值分析
+- LSTM 預測強度評級
+- 綜合決策矩陣
+- 風險等級分類（S/A/B/C/D）
+
+---
 ## �📄 授權
 
 MIT License
