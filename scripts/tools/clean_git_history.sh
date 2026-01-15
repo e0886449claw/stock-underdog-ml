@@ -17,21 +17,13 @@ echo ""
 echo "📋 步骤 1/4: 创建敏感数据替换文件..."
 
 cat > /tmp/credentials-to-remove.txt << 'EOF'
-# Email 密码
-REDACTED_PASSWORD==>your_app_specific_password
-
-# Telegram Token
-REDACTED_TOKEN==>your_bot_token_here
-
-# MongoDB URI
-mongodb+srv://user:pass@host.mongodb.net/==>mongodb+srv://username:password@cluster.mongodb.net/database_name
-
-# Email
-user@example.com==>your_email@gmail.com
-recipient@example.com==>REDACTED_EMAIL
-
-# Channel ID
--1001234567==>-1001234567890
+# 示例格式：
+# old_secret==>new_placeholder
+# 
+# 请在此处添加需要清理的敏感数据
+# 例如：
+# my_password123==>your_password_here
+# api_key_xyz==>your_api_key_here
 EOF
 
 echo "✅ 替换文件已创建"
