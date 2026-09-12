@@ -70,6 +70,7 @@ logs/
 
 # Output files
 output/
+reports/
 *.csv
 
 # Nohup output (可能包含敏感資訊)

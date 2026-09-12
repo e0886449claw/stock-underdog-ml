@@ -64,6 +64,8 @@ def main():
 
         persist_db = not (args.no_db or args.dry_run)
         send_notify = not (args.no_notify or args.dry_run)
+        # run_mode 分流 (指揮官裁示二): --dry-run → dry_run, 正式 → production
+        run_mode = "dry_run" if args.dry_run else "production"
 
         # 初始化兩階段管線排程器
         orchestrator = PipelineOrchestrator()
@@ -74,7 +76,8 @@ def main():
             persist_db=persist_db,
             send_notify=send_notify,
             market=args.market,
-            index_names=args.index
+            index_names=args.index,
+            run_mode=run_mode
         )
 
         elapsed = datetime.datetime.now() - start_time
