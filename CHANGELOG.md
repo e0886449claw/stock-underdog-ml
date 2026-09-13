@@ -8,6 +8,13 @@
 
 ## [Unreleased] - 2026-09-02
 
+### 🛰️ HERMES 本地整合：SQLite 旁路 + 交叉比對 + 正式排程（2026-09-06）
+- **🇹🇼 台股盤前 08:00 正式排程** (`~/.hermes/scripts/dawei_daily_tw.sh`, production)：`python main.py --market tw` → 交叉比對 SQL (`WHERE run_mode='production'`, double∩我方 launch/washout, `potential_pct>0`) → 存當日報告 `reports/david_tw/david_tw_YYYYMMDD.md` → stdout 轉 Telegram。cron `df108754bbb6`。
+- **🇺🇸 美股盤前 20:30 正式排程** (`~/.hermes/scripts/dawei_daily_us.sh`, production)：同上流程 market=us。cron `08be328e96c5`。
+- **SQLite 旁路輸出** (`data/sqlite_resonance_sink.py`)：result 落地 hermes_data.db 的 `david_stock_signals` 表，`run_mode` 分流 dry_run/production，UNIQUE 含 run_mode 防測試混入決策。
+- **里程碑**：dry-run 166 筆 (0 triple / 65 double) → production 275 筆 (0 triple / 64 double) → 交叉比對命中 5 檔 (2603長榮/4958臻鼎-KY/2368金像電/1229聯華/2385群光)。
+- **平台相容**：排程 wrapper 為 POSIX 相容 (macOS bash 3.2 不支援 `${VAR^^}` 已改 case 語句)。
+
 ### 📄 全面支援 llmstxt.org 規範 (`/llms.txt` & `/llms-full.txt`)
 - **遵循 Jeremy Howard [llmstxt.org](https://llmstxt.org/) 標準規範**：
   - 重構 `/llms.txt` 與 `/llms-full.txt`，提供乾淨、結構化之 Markdown 摘要、策略端點清單與全量系統規格。

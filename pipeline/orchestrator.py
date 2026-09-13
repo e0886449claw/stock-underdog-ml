@@ -26,6 +26,7 @@ from evaluators.ai_narrative import AINarrativeEngine
 from evaluators.formatter import print_evaluation_report
 from database import SupabaseManager
 from data.duckdb_manager import DuckDBManager
+from data.sqlite_resonance_sink import sqlite_resonance_sink
 from notifier_dual import send_dual_strategy_results
 
 logger = logging.getLogger("stock_app.pipeline")
@@ -61,7 +62,8 @@ class PipelineOrchestrator:
         period: str = "6mo",
         macro_state: Optional[MacroState] = None,
         persist_db: bool = True,
-        send_notify: bool = True
+        send_notify: bool = True,
+        run_mode: str = "production"
     ) -> EvaluationReport:
         """
         Execute full pipeline for a single stock index.
@@ -208,6 +210,24 @@ class PipelineOrchestrator:
             except Exception as e:
                 logger.error(f"❌ DuckDB 本地寫入失敗 ({index_name}): {e}")
 
+        # 4.4 SQLite 旁路: 寫入 HERMES 主資料庫 david_stock_signals (交叉驗證橋樑)
+        #   - 不影響 DuckDB/Supabase/策略邏輯, 純新增旁路
+        #   - 永遠寫入 (即使 dry-run 也寫): dry-run 正是要驗證資料流通路,
+        #     SQLite 是本地交叉驗證表, 不涉及對外通知/雲端
+        #   - run_mode 分流 (指揮官裁示二): dry_run / production, 任務6加 WHERE 防混
+        #   - ranked_stocks 需透過 report 物件傳入 sink (report_dict 內無此鍵)
+        try:
+            report_dict["_ranked_stocks_sink"] = getattr(report, "ranked_stocks", [])
+            sqlite_resonance_sink.save_resonance_results(
+                index_name, report_dict, period=period, macro_state=macro_state,
+                run_mode=run_mode,
+            )
+            # 清除輔助鍵 (不污染對外 report_dict)
+            report_dict.pop("_ranked_stocks_sink", None)
+        except Exception as e:
+            logger.error(f"❌ SQLite 旁路寫入失敗 ({index_name}): {e}")
+            report_dict.pop("_ranked_stocks_sink", None)
+
         return report
 
     def run_all_indices(
@@ -217,7 +237,8 @@ class PipelineOrchestrator:
         persist_db: bool = True,
         send_notify: bool = True,
         market: str = "all",
-        index_names: Optional[List[str]] = None
+        index_names: Optional[List[str]] = None,
+        run_mode: str = "production"
     ) -> Dict[str, EvaluationReport]:
         """
         Execute analysis across all major supported stock indices with pre-flight Macro check.
@@ -280,7 +301,8 @@ class PipelineOrchestrator:
                 period=period, 
                 macro_state=target_macro,
                 persist_db=persist_db, 
-                send_notify=send_notify
+                send_notify=send_notify,
+                run_mode=run_mode
             )
             all_reports[index_name] = rep
 

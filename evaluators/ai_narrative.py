@@ -81,9 +81,20 @@ class AINarrativeEngine:
             try:
                 logger.info(f"🧠 [LLM Slot {slot_idx}] 正在請求 {slot.name} ({slot.model})...")
                 content = self._call_openai_compatible(slot, context_prompt)
-                if content and len(content.strip()) > 20:
+                # 原閾值 >20 字過苛: Agnes flash 對精簡 report 回傳合理但少於 20 字的摘要會
+                # 被誤判失敗而靜默跳過 → 降級模板。放寬為「strip 後非空即接受」,讓 LLM 真正生效。
+                if content and len(content.strip()) > 0:
                     logger.info(f"✅ [LLM Slot {slot_idx}] {slot.name} 研報生成成功！")
                     return content.strip()
+                # 偶發空回傳處理 (指揮官 9/6 核准): HTTP 200 但 content 為空 → 不立刻降級,
+                # 對同一 slot 重試一次 (Agnes 端偶發空回傳, 單測同 context 是通的)。
+                # 成本=有時多耗 1 次 API 請求, 在 0.04% 額度基數下可忽略, 換來排程穩定性。
+                logger.warning(f"⚠️ [LLM Slot {slot_idx}] {slot.name} 回傳空內容, 重試一次...")
+                content = self._call_openai_compatible(slot, context_prompt)
+                if content and len(content.strip()) > 0:
+                    logger.info(f"✅ [LLM Slot {slot_idx}] {slot.name} 重試成功！")
+                    return content.strip()
+                logger.warning(f"⚠️ [LLM Slot {slot_idx}] {slot.name} 重試仍空, 切換下一備援...")
             except Exception as e:
                 logger.warning(f"⚠️ [LLM Slot {slot_idx}] {slot.name} 呼叫失敗 ({e})，切換下一備援...")
 
